@@ -7,7 +7,7 @@
 """My Env Environment."""
 
 from .client import myEnv
-from .models import MyAction, MyObservation
+from server.models import MyAction, MyObservation
 
 __all__ = [
     "MyAction",

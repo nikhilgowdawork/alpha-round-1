@@ -46,11 +46,15 @@ import os
 import re
 import textwrap
 from typing import Dict, List, Optional
-
 from dotenv import load_dotenv
+import sys
+from pathlib import Path
 from openai import OpenAI
 
-from models import MyAction
+# Add project root
+sys.path.append(str(Path(__file__).resolve().parent))
+
+from server.models import MyAction
 from server.my_env_environment import MyEnvironment
 
 load_dotenv()
