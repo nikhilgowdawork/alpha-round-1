@@ -31,14 +31,14 @@ def root():
     return {"message": "Crisis Response Env API is running"}
 
 # Browser-friendly GET wrappers for testing (optional)
-@app.get("/reset_test")
+@app.get("/reset")
 def reset_test():
     from fastapi.testclient import TestClient
     client = TestClient(app)
     resp = client.post("/reset")
     return resp.json()
 
-@app.get("/state_test")
+@app.get("/state")
 def state_test():
     from fastapi.testclient import TestClient
     client = TestClient(app)
@@ -62,5 +62,3 @@ if __name__ == "__main__":
     main()
     
 
-if __name__ == "__main__":
-    main()
