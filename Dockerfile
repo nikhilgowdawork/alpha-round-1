@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy rest of project
 COPY . .
+COPY openenv.yaml ./
 
 # Set Python path
 ENV PYTHONPATH="/app"
