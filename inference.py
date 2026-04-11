@@ -21,36 +21,42 @@ if not API_KEY:
 
 client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
 
-# ---------------- HARD CLAMP ----------------
-def clamp_score(value: float) -> float:
-    """
-    Force score strictly into (0,1)
-    """
-    return round(min(0.9999, max(0.0001, float(value))), 4)
+# ---------------- SAFE CLAMP ----------------
+def safe_format(value: float) -> str:
+    
+    value = float(value)
+
+    if value >= 1.0:
+        value = 0.99
+    elif value <= 0.0:
+        value = 0.01
+    
+    return f"{value:.2f}"
+
 
 # ---------------- LOGGING ----------------
 def log_start(task: str):
     print(f"[START] task={task} env=crisis_response_env model={MODEL_NAME}", flush=True)
 
+
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]):
-    safe_reward = clamp_score(reward)
     error_val = error if error else "null"
 
     print(
-        f"[STEP] step={step} action={action} reward={safe_reward:.4f} done={str(done).lower()} error={error_val}",
+        f"[STEP] step={step} action={action} reward={safe_format(reward)} "
+        f"done={str(done).lower()} error={error_val}",
         flush=True
     )
 
-def log_end(task: str, success: bool, steps: int, rewards: List[float]):
-    safe_rewards = [clamp_score(r) for r in rewards]
-    rewards_str = ",".join(f"{r:.4f}" for r in safe_rewards)
 
-    final_score = clamp_score(sum(safe_rewards) / len(safe_rewards)) if safe_rewards else 0.0001
+def log_end(success: bool, steps: int, rewards: List[float]):
+    rewards_str = ",".join(safe_format(r) for r in rewards)
 
     print(
-        f"[END] task={task} score={final_score:.4f} steps={steps} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}",
         flush=True
     )
+
 
 # ---------------- LLM ----------------
 def get_llm_output(observation: Dict):
@@ -90,6 +96,7 @@ Situation:
     except Exception as e:
         return None, str(e)
 
+
 # ---------------- RUN TASK ----------------
 def run_task(name, task):
     log_start(name)
@@ -98,44 +105,40 @@ def run_task(name, task):
 
     try:
         observation = task.get_observation()
-
         output, error = get_llm_output(observation)
 
         if output is None:
-            # HARD FAIL PATH
-            log_step(1, "error", 0.0001, True, error)
-            log_end(name, False, 1, [0.0001])
-            return 0.0001
+            log_step(1, "error", 0.001, True, error)
+            log_end(False, 1, [0.001])
+            return 0.001
 
-        raw_score = task.grade(output)
-        score = clamp_score(raw_score)
+        raw_score = task.grade(output)  # DO NOT clamp here
 
         action_str = str(output).replace("\n", "")
 
         log_step(
             step=1,
             action=action_str,
-            reward=score,
+            reward=raw_score,
             done=True,
             error=error
         )
 
-        rewards.append(score)
+        rewards.append(raw_score)
 
         log_end(
-            task=name,
-            success=score > 0.1,
+            success=raw_score > 0.1,
             steps=1,
             rewards=rewards
         )
 
-        return score
+        return raw_score
 
     except Exception as e:
-        # HARD CRASH SAFETY
-        print(f"[STEP] step=1 action=error reward=0.0001 done=true error={str(e)}", flush=True)
-        print(f"[END] task={name} score=0.0001 steps=1 rewards=0.0001", flush=True)
-        return 0.0001
+        log_step(1, "error", 0.001, True, str(e))
+        log_end(False, 1, [0.001])
+        return 0.001
+
 
 # ---------------- MAIN ----------------
 async def main():
@@ -151,8 +154,9 @@ async def main():
         score = run_task(name, task)
         total += score
 
-    final_score = clamp_score(total / len(tasks))
-    print(f"\nFINAL SCORE: {final_score:.4f}")
+    final_score = max(0.001, min(0.999, total / len(tasks)))
+    print(f"\nFINAL SCORE: {final_score:.2f}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
