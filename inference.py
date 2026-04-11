@@ -21,35 +21,34 @@ if not API_KEY:
 
 client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
 
-# ---------------- SAFE FORMAT (ONLY FOR PRINT) ----------------
-def safe_format(value: float) -> str:
-    value = float(value)
-
-    if value >= 1.0:
-        value = 0.999
-    elif value <= 0.0:
-        value = 0.001
-
-    return f"{value:.4f}"
+# ---------------- HARD CLAMP ----------------
+def clamp_score(value: float) -> float:
+    """
+    Force score strictly into (0,1)
+    """
+    return round(min(0.9999, max(0.0001, float(value))), 4)
 
 # ---------------- LOGGING ----------------
 def log_start(task: str):
     print(f"[START] task={task} env=crisis_response_env model={MODEL_NAME}", flush=True)
 
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]):
+    safe_reward = clamp_score(reward)
     error_val = error if error else "null"
 
     print(
-        f"[STEP] step={step} action={action} reward={safe_format(reward)} "
-        f"done={str(done).lower()} error={error_val}",
+        f"[STEP] step={step} action={action} reward={safe_reward:.4f} done={str(done).lower()} error={error_val}",
         flush=True
     )
 
-def log_end(success: bool, steps: int, rewards: List[float]):
-    rewards_str = ",".join(safe_format(r) for r in rewards)
+def log_end(task: str, success: bool, steps: int, rewards: List[float]):
+    safe_rewards = [clamp_score(r) for r in rewards]
+    rewards_str = ",".join(f"{r:.4f}" for r in safe_rewards)
+
+    final_score = clamp_score(sum(safe_rewards) / len(safe_rewards)) if safe_rewards else 0.0001
 
     print(
-        f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}",
+        f"[END] task={task} score={final_score:.4f} steps={steps} rewards={rewards_str}",
         flush=True
     )
 
@@ -83,10 +82,6 @@ Situation:
 
         output = response.choices[0].message.content.strip()
 
-        
-        if task_type == "classify_urgency":
-            return output.strip().lower(), None
-
         try:
             return json.loads(output), None
         except:
@@ -103,45 +98,44 @@ def run_task(name, task):
 
     try:
         observation = task.get_observation()
+
         output, error = get_llm_output(observation)
 
         if output is None:
-            log_step(1, "error", 0.001, True, error)
-            log_end(False, 1, [0.001])
-            return 0.001
+            # HARD FAIL PATH
+            log_step(1, "error", 0.0001, True, error)
+            log_end(name, False, 1, [0.0001])
+            return 0.0001
 
         raw_score = task.grade(output)
-
-      
-        if raw_score >= 1.0:
-            raw_score = 0.999
-        elif raw_score <= 0.0:
-            raw_score = 0.001
+        score = clamp_score(raw_score)
 
         action_str = str(output).replace("\n", "")
 
         log_step(
             step=1,
             action=action_str,
-            reward=raw_score,
+            reward=score,
             done=True,
             error=error
         )
 
-        rewards.append(raw_score)
+        rewards.append(score)
 
         log_end(
-            success=raw_score > 0.1,
+            task=name,
+            success=score > 0.1,
             steps=1,
             rewards=rewards
         )
 
-        return raw_score
+        return score
 
     except Exception as e:
-        log_step(1, "error", 0.001, True, str(e))
-        log_end(False, 1, [0.001])
-        return 0.001
+        # HARD CRASH SAFETY
+        print(f"[STEP] step=1 action=error reward=0.0001 done=true error={str(e)}", flush=True)
+        print(f"[END] task={name} score=0.0001 steps=1 rewards=0.0001", flush=True)
+        return 0.0001
 
 # ---------------- MAIN ----------------
 async def main():
@@ -157,8 +151,8 @@ async def main():
         score = run_task(name, task)
         total += score
 
-    final_score = max(0.001, min(0.999, total / len(tasks)))
-    print(f"\nFINAL SCORE: {final_score:.2f}")
+    final_score = clamp_score(total / len(tasks))
+    print(f"\nFINAL SCORE: {final_score:.4f}")
 
 if __name__ == "__main__":
     asyncio.run(main())
