@@ -4,7 +4,7 @@ Demonstrates how rewards are calculated at each step
 """
 
 from server.my_env_environment import MyEnvironment
-from models import MyAction
+from .server.models import MyAction
 import json
 
 print("\n" + "-"*70)
