@@ -5,7 +5,7 @@ colorFrom: red
 colorTo: blue
 sdk: docker
 pinned: false
-app_port: 8000
+app_port: 7860
 base_path: /web
 tags:
   - openenv
@@ -92,15 +92,20 @@ HF_TOKEN=your_huggingface_token
 
 3. Run the server:
 ```bash
-cd crisis_env
 python -m server.app
+```
+
+   Or run the FastAPI server directly:
+```bash
+cd server
+python app.py
 ```
 
 4. Test the environment:
 ```python
-from client import MyEnv
+from client import myEnv
 
-env = MyEnv.from_docker_image("crisis-response-coordinator:latest")
+env = myEnv(base_url="http://localhost:7860")
 observation = env.reset()
 # ... interact with environment
 ```
@@ -108,9 +113,8 @@ observation = env.reset()
 ### Docker Build
 
 ```bash
-cd crisis_env
-docker build -t crisis-response-coordinator .
-docker run -p 8000:8000 crisis-response-coordinator
+docker build -t crisis-response-coordinator -f server/Dockerfile .
+docker run -p 7860:7860 crisis-response-coordinator
 ```
 
 ### Hugging Face Spaces Deployment
@@ -138,166 +142,70 @@ python baseline.py
 ✅ Baseline inference with reproducible scores  
 ✅ HF Spaces + working Dockerfile  
 ✅ Complete README with description, spaces, setup
-- Connecting to the environment
-- Container cleanup when you call `close()`
 
-## Building the Docker Image
+## Project Structure
 
-Before using the environment, you need to build the Docker image:
+```
+├── baseline.py           # Run task baselines (easy/medium/hard)
+├── inference.py          # Advanced inference with logging
+├── client.py             # OpenEnv client for connecting to server
+├── server/
+│   ├── app.py           # FastAPI server (main entry point)
+│   ├── models.py        # Pydantic models (MyAction, MyObservation)
+│   ├── my_env_environment.py  # Environment logic
+│   └── Dockerfile       # Docker container definition
+├── tasks/
+│   ├── task_easy.py     # Easy: Classify incident urgency
+│   ├── task_medium.py   # Medium: Allocate resources
+│   └── task_hard.py     # Hard: Crisis coordination
+├── requirements.txt     # Python dependencies
+├── openenv.yaml         # OpenEnv configuration
+└── Readme.md           # This file
+```
 
+## Project Files
+
+- **baseline.py**: Tests LLM performance on all three tasks (easy, medium, hard) and reports average score
+- **inference.py**: Advanced inference with detailed logging and step-by-step tracking
+- **client.py**: OpenEnv HTTP client for connecting to the server
+- **server/app.py**: FastAPI server implementing crisis response environment
+- **server/models.py**: Pydantic data models for actions and observations
+- **server/my_env_environment.py**: Core environment simulation logic
+- **tasks/**: Task definitions with grading functions
+
+## Running Examples
+
+### Quick Test with Baseline
+
+Test the LLM against all three tasks:
 ```bash
-# From project root
-docker build -t my_env-env:latest -f server/Dockerfile .
+python baseline.py
 ```
 
-## Deploying to Hugging Face Spaces
+Output:
+```
+=== easy Task ===
+Model Output: medium
+Score: 1.0
 
-You can easily deploy your OpenEnv environment to Hugging Face Spaces using the `openenv push` command:
+=== FINAL SCORE ===
+0.75
+```
 
+### Advanced Inference
+
+Run inference with detailed logging:
 ```bash
-# From the environment directory (where openenv.yaml is located)
-openenv push
-
-# Or specify options
-openenv push --namespace my-org --private
+python inference.py
 ```
 
-The `openenv push` command will:
-1. Validate that the directory is an OpenEnv environment (checks for `openenv.yaml`)
-2. Prepare a custom build for Hugging Face Docker space (enables web interface)
-3. Upload to Hugging Face (ensuring you're logged in)
+### Server Only
 
-### Prerequisites
-
-- Authenticate with Hugging Face: The command will prompt for login if not already authenticated
-
-### Options
-
-- `--directory`, `-d`: Directory containing the OpenEnv environment (defaults to current directory)
-- `--repo-id`, `-r`: Repository ID in format 'username/repo-name' (defaults to 'username/env-name' from openenv.yaml)
-- `--base-image`, `-b`: Base Docker image to use (overrides Dockerfile FROM)
-- `--private`: Deploy the space as private (default: public)
-
-### Examples
-
+Run just the server for custom client integration:
 ```bash
-# Push to your personal namespace (defaults to username/env-name from openenv.yaml)
-openenv push
-
-# Push to a specific repository
-openenv push --repo-id my-org/my-env
-
-# Push with a custom base image
-openenv push --base-image ghcr.io/meta-pytorch/openenv-base:latest
-
-# Push as a private space
-openenv push --private
-
-# Combine options
-openenv push --repo-id my-org/my-env --base-image custom-base:latest --private
+python server/app.py
 ```
-
-After deployment, your space will be available at:
-`https://huggingface.co/spaces/<repo-id>`
-
-The deployed space includes:
-- **Web Interface** at `/web` - Interactive UI for exploring the environment
-- **API Documentation** at `/docs` - Full OpenAPI/Swagger interface
-- **Health Check** at `/health` - Container health monitoring
-- **WebSocket** at `/ws` - Persistent session endpoint for low-latency interactions
-
-## Environment Details
-
-### Action
-**MyAction**: Contains a single field
-- `message` (str) - The message to echo back
-
-### Observation
-**MyObservation**: Contains the echo response and metadata
-- `echoed_message` (str) - The message echoed back
-- `message_length` (int) - Length of the message
-- `reward` (float) - Reward based on message length (length × 0.1)
-- `done` (bool) - Always False for echo environment
-- `metadata` (dict) - Additional info like step count
-
-### Reward
-The reward is calculated as: `message_length × 0.1`
-- "Hi" → reward: 0.2
-- "Hello, World!" → reward: 1.3
-- Empty message → reward: 0.0
-
-## Advanced Usage
-
-### Connecting to an Existing Server
-
-If you already have a My Env environment server running, you can connect directly:
-
-```python
-from my_env import MyEnv
-
-# Connect to existing server
-my_envenv = MyEnv(base_url="<ENV_HTTP_URL_HERE>")
-
-# Use as normal
-result = my_envenv.reset()
-result = my_envenv.step(MyAction(message="Hello!"))
-```
-
-Note: When connecting to an existing server, `my_envenv.close()` will NOT stop the server.
-
-### Using the Context Manager
-
-The client supports context manager usage for automatic connection management:
-
-```python
-from my_env import MyAction, MyEnv
-
-# Connect with context manager (auto-connects and closes)
-with MyEnv(base_url="http://localhost:8000") as env:
-    result = env.reset()
-    print(f"Reset: {result.observation.echoed_message}")
-    # Multiple steps with low latency
-    for msg in ["Hello", "World", "!"]:
-        result = env.step(MyAction(message=msg))
-        print(f"Echoed: {result.observation.echoed_message}")
-```
-
-The client uses WebSocket connections for:
-- **Lower latency**: No HTTP connection overhead per request
-- **Persistent session**: Server maintains your environment state
-- **Efficient for episodes**: Better for many sequential steps
-
-### Concurrent WebSocket Sessions
-
-The server supports multiple concurrent WebSocket connections. To enable this,
-modify `server/app.py` to use factory mode:
-
-```python
-# In server/app.py - use factory mode for concurrent sessions
-app = create_app(
-    MyEnvironment,  # Pass class, not instance
-    MyAction,
-    MyObservation,
-    max_concurrent_envs=4,  # Allow 4 concurrent sessions
-)
-```
-
-Then multiple clients can connect simultaneously:
-
-```python
-from my_env import MyAction, MyEnv
-from concurrent.futures import ThreadPoolExecutor
-
-def run_episode(client_id: int):
-    with MyEnv(base_url="http://localhost:8000") as env:
-        result = env.reset()
-        for i in range(10):
-            result = env.step(MyAction(message=f"Client {client_id}, step {i}"))
-        return client_id, result.observation.message_length
-
-# Run 4 episodes concurrently
-with ThreadPoolExecutor(max_workers=4) as executor:
-    results = list(executor.map(run_episode, range(4)))
+Server will be available at `http://localhost:7860`
 ```
 
 ## Development & Testing
