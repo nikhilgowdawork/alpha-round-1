@@ -208,6 +208,24 @@ class MyEnvironment(Environment):
             done=done,
             reward=reward,
         )
+    
+    
+    # -------------------------
+    # USER DEFINED INCIDENT
+    # -------------------------
+    def add_incident(self, incident_type, severity, location, people_affected):
+        incident = Incident(
+        incident_id=f"inc_{len(self._incidents)}",
+        type=incident_type,
+        severity=severity,
+        location=location,
+        people_affected=people_affected,
+        resolved=False
+    )
+
+        self._incidents.append(incident)
+
+        return self._build_observation(reward=0.0, done=False)
 
     # -------------------------
     # STATE META
@@ -216,3 +234,5 @@ class MyEnvironment(Environment):
     @property
     def state(self) -> State:
         return self._state
+    
+
